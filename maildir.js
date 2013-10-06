@@ -24,6 +24,26 @@ exports.hook_queue = function (next, connection) {
     //Maildir user forced by header.
     maildir.maildir(forced).messageStream(stream, next);
   }
+
+  else if (!mail_from) {
+    // if we receive mail from a bounce address
+    // do not populate the ".Sent" dir
+    maildir.maildir(rcpt_to[0]).messageStream(stream, function () {
+      (function nextRcpt(i, cb) {
+        if (i == rcpt_to.length) {
+          cb();
+        }
+        else {
+          maildir.maildir(rcpt_to[i]).messageStream(stream, function () {
+            nextRcpt(i + 1, cb);
+          });
+        }
+      }(1, function() {
+        next(OK);
+      }));
+    });
+  }
+
   else {
     //Populate ".Sent" dir of sender.
     maildir.maildir(mail_from, '.Sent').messageStream(stream, function () {
@@ -67,9 +87,13 @@ Maildir.prototype.fileName = function () {
 };
 
 Maildir.prototype.maildir = function (user, folder) {
-  var self = this;
-  var userParts = user.split('@');
-  var name = userParts[0], domain = userParts[1];
+  var self = this;    
+  var name = '', domain = '';
+  if (user) {
+    var userParts = user.split('@');
+    name = userParts[0];
+    domain = userParts[1];
+  }
   var mode;
 
   return {
